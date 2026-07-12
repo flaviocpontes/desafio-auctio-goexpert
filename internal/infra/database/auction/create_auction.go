@@ -55,27 +55,23 @@ func (ar *AuctionRepository) CreateAuction(
 }
 
 func (ar *AuctionRepository) scheduleAuctionClosing(auctionId string) {
-	auctionDuration := getAuctionDuration()
+	select {
+	case <-time.After(getAuctionDuration()):
+		update := bson.M{
+			"$set": bson.M{
+				"status": auction_entity.Completed,
+			},
+		}
+		filter := bson.M{
+			"_id":    auctionId,
+			"status": auction_entity.Active,
+		}
 
-	time.Sleep(auctionDuration)
-
-	filter := bson.M{
-		"_id":    auctionId,
-		"status": auction_entity.Active,
-	}
-
-	update := bson.M{
-		"$set": bson.M{
-			"status": auction_entity.Completed,
-		},
-	}
-
-	// Contexto criado na Goroutine para evitar
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if _, err := ar.Collection.UpdateOne(ctx, filter, update); err != nil {
-		logger.Error("Error trying to close auction automatically", err)
+		_, err := ar.Collection.UpdateOne(context.Background(), filter, update)
+		if err != nil {
+			logger.Error("Error trying to close auction automatically", err)
+			return
+		}
 	}
 }
 
